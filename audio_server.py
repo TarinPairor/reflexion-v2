@@ -42,6 +42,17 @@ FEATURE_COLUMNS = [
     "mfcc2_sma3_amean",
 ]
 
+DEMENTIA_BANK_FEATURE_COLUMNS = [
+
+     "F0semitoneFrom27.5Hz_sma3nz_amean",
+    "F0semitoneFrom27.5Hz_sma3nz_stddevNorm",
+    "loudness_sma3_amean",
+    "loudness_sma3_stddevNorm",
+    "HNRdBACF_sma3nz_amean",
+    "mfcc1_sma3_amean",
+    "mfcc2_sma3_amean",
+]
+
 # Initialize openSMILE
 smile = opensmile.Smile(
     feature_set=opensmile.FeatureSet.eGeMAPSv02,
@@ -88,11 +99,11 @@ def extract_features_from_wav(wav_path: str) -> pd.DataFrame:
         feats = smile.process_file(wav_path).reset_index(drop=True)
         
         # Check for missing columns
-        missing = [c for c in FEATURE_COLUMNS if c not in feats.columns]
+        missing = [c for c in DEMENTIA_BANK_FEATURE_COLUMNS if c not in feats.columns]
         if missing:
             raise ValueError(f"Missing columns in openSMILE output: {missing}")
         
-        return feats[FEATURE_COLUMNS].copy()
+        return feats[DEMENTIA_BANK_FEATURE_COLUMNS].copy()
     except Exception as e:
         raise ValueError(f"Error extracting features: {str(e)}")
 
@@ -182,9 +193,8 @@ def health_check():
 
 if __name__ == '__main__':
     # Try to load model and scaler
-    model_path = os.getenv('MODEL_PATH', 'model.joblib')
-    scaler_path = os.getenv('SCALER_PATH', 'scaler.joblib')
-    
+    model_path = os.getenv('MODEL_PATH', 'dementiabank_model.joblib')
+    scaler_path = os.getenv('SCALER_PATH', 'dementiabank_scaler.joblib')
     load_model_and_scaler(model_path, scaler_path)
     
     if model is None or scaler is None:
@@ -199,4 +209,3 @@ if __name__ == '__main__':
     print(f"❤️  Health check: GET http://localhost:{port}/health\n")
     
     app.run(host='0.0.0.0', port=port, debug=True)
-
