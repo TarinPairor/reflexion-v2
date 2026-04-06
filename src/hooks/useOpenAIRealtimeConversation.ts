@@ -11,15 +11,39 @@ const DEFAULT_TURN_DETECTION = {
   silence_duration_ms: 2000,
 }
 
+
+function metricsFromSegment(
+  rawSeconds: number,
+  wordCount: number,
+): { durationDisplay: string; wordsPerSecond: number | null } {
+  const vadTailSec = DEFAULT_TURN_DETECTION.silence_duration_ms / 1000
+  const netSeconds = Math.max(0, rawSeconds - vadTailSec)
+  const durationDisplay = `${netSeconds.toFixed(2)}s`
+  const wordsPerSecond =
+    netSeconds > 0 && wordCount > 0
+      ? parseFloat((wordCount / netSeconds).toFixed(2))
+      : null
+  return { durationDisplay, wordsPerSecond }
+}
+
 export type ConversationLanguage = 'en' | 'zh'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
+
+/** Shown under user bubbles: "6 words • Spoke for 4.10s • 1.46 words/sec" */
+export type UserUtteranceMetrics = {
+  wordCount: number
+  /** Display like "4.10s" or "N/A" */
+  durationDisplay: string
+  wordsPerSecond: number | null
+}
 
 export type ChatMessage = {
   id: string
   role: ChatRole
   text: string
   streaming?: boolean
+  userMetrics?: UserUtteranceMetrics
 }
 
 export type StatusKind =
@@ -33,12 +57,29 @@ type RealtimePayload = {
   type: string
   delta?: string
   transcript?: string
+  /** Server VAD: ms offset into session buffer when speech starts/stops */
+  audio_start_ms?: number
+  audio_end_ms?: number
   item?: {
-    created_at?: string
-    started_at?: string
+    created_at?: string | number
+    started_at?: string | number
     type?: string
   }
-  created_at?: string
+  created_at?: string | number
+}
+
+/** API may send ISO strings or Unix seconds/ms. */
+function parseEventTime(value: unknown): number | null {
+  if (value == null) return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value < 10_000_000_000) return Math.round(value * 1000)
+    return Math.round(value)
+  }
+  if (typeof value === 'string') {
+    const t = Date.parse(value)
+    return Number.isNaN(t) ? null : t
+  }
+  return null
 }
 
 function instructionsForLanguage(lang: ConversationLanguage): string {
@@ -67,6 +108,9 @@ export function useOpenAIRealtimeConversation() {
   const streamingMsgIdRef = useRef<string | null>(null)
   const userSpeakingStartRef = useRef<number | null>(null)
   const aiResponseStartRef = useRef<number | null>(null)
+  /** From input_audio_buffer.speech_started / speech_stopped — same timeline, best duration source */
+  const utteranceAudioStartMsRef = useRef<number | null>(null)
+  const utteranceAudioEndMsRef = useRef<number | null>(null)
 
   const updateStatus = useCallback((kind: StatusKind, text: string) => {
     setStatusKind(kind)
@@ -112,12 +156,42 @@ export function useOpenAIRealtimeConversation() {
     ])
   }, [])
 
+  const addUserMessage = useCallback(
+    (text: string, userMetrics: UserUtteranceMetrics) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'user' as const,
+          text,
+          userMetrics,
+        },
+      ])
+    },
+    [],
+  )
+
   const clearMessages = useCallback(() => {
     setMessages([])
   }, [])
 
   const handleMessage = useCallback(
     (message: RealtimePayload) => {
+      if (import.meta.env.DEV) {
+        const t = message.type
+        if (
+          (t && t.includes('input_audio')) ||
+          (t && t.includes('transcription'))
+        ) {
+          const matchesLooseInputAudio =
+            Boolean(t?.includes('input_audio')) && !t.includes('completed')
+          console.log('[Realtime VAD/transcription]', t, {
+            matchesLooseHtmlCheck: matchesLooseInputAudio,
+            payload: message,
+          })
+        }
+      }
+
       if (
         message.type === 'response.audio_transcript.delta' &&
         message.delta
@@ -133,12 +207,89 @@ export function useOpenAIRealtimeConversation() {
           addMessage('assistant', final)
         }
         updateStatus('listening', 'Listening…')
+      } else if (message.type === 'input_audio_buffer.speech_started') {
+        utteranceAudioEndMsRef.current = null
+        if (typeof message.audio_start_ms === 'number') {
+          utteranceAudioStartMsRef.current = message.audio_start_ms
+        }
+        if (!userSpeakingStartRef.current) {
+          userSpeakingStartRef.current = Date.now()
+        }
+        aiResponseStartRef.current = null
+      } else if (message.type === 'input_audio_buffer.speech_stopped') {
+        if (typeof message.audio_end_ms === 'number') {
+          utteranceAudioEndMsRef.current = message.audio_end_ms
+        }
+      } else if (
+        message.type === 'conversation.item.input_audio_transcription.started'
+      ) {
+        if (!userSpeakingStartRef.current) {
+          userSpeakingStartRef.current = Date.now()
+        }
+        aiResponseStartRef.current = null
       } else if (
         message.type === 'conversation.item.input_audio_transcription.completed'
       ) {
         const transcript = message.transcript
         if (transcript) {
-          addMessage('user', transcript)
+          const wordCount = transcript
+            .trim()
+            .split(/\s+/)
+            .filter((w) => w.length > 0).length
+
+          const transcriptionCompleteTime = Date.now()
+          const bufStart = utteranceAudioStartMsRef.current
+          const bufEnd = utteranceAudioEndMsRef.current
+          utteranceAudioStartMsRef.current = null
+          utteranceAudioEndMsRef.current = null
+
+          let durationDisplay = 'N/A'
+          let wordsPerSecond: number | null = null
+
+          if (
+            typeof bufStart === 'number' &&
+            typeof bufEnd === 'number' &&
+            bufEnd > bufStart
+          ) {
+            const rawSeconds = (bufEnd - bufStart) / 1000
+            const m = metricsFromSegment(rawSeconds, wordCount)
+            durationDisplay = m.durationDisplay
+            wordsPerSecond = m.wordsPerSecond
+          } else {
+            let actualStartTime = userSpeakingStartRef.current
+
+            if (!actualStartTime && message.item) {
+              actualStartTime =
+                parseEventTime(message.item.created_at) ??
+                parseEventTime(message.item.started_at)
+            }
+            if (!actualStartTime) {
+              actualStartTime = parseEventTime(message.created_at)
+            }
+
+            if (actualStartTime) {
+              const aiStart = aiResponseStartRef.current
+              const endTime =
+                aiStart &&
+                aiStart < transcriptionCompleteTime &&
+                aiStart > actualStartTime
+                  ? aiStart
+                  : transcriptionCompleteTime
+              const durationMs = endTime - actualStartTime
+              if (durationMs > 0) {
+                const rawSeconds = durationMs / 1000
+                const m = metricsFromSegment(rawSeconds, wordCount)
+                durationDisplay = m.durationDisplay
+                wordsPerSecond = m.wordsPerSecond
+              }
+            }
+          }
+
+          addUserMessage(transcript, {
+            wordCount,
+            durationDisplay,
+            wordsPerSecond,
+          })
           updateStatus('processing', 'AI is thinking…')
         }
         userSpeakingStartRef.current = null
@@ -158,9 +309,16 @@ export function useOpenAIRealtimeConversation() {
         message.item?.type === 'input_audio_transcription'
       ) {
         if (!userSpeakingStartRef.current) {
-          userSpeakingStartRef.current = message.item.created_at
-            ? new Date(message.item.created_at).getTime()
-            : Date.now()
+          userSpeakingStartRef.current =
+            parseEventTime(message.item.created_at) ?? Date.now()
+          aiResponseStartRef.current = null
+        }
+      } else if (
+        message.type?.includes('input_audio') &&
+        !message.type.includes('completed')
+      ) {
+        if (!userSpeakingStartRef.current) {
+          userSpeakingStartRef.current = Date.now()
           aiResponseStartRef.current = null
         }
       } else if (message.type === 'response.audio.delta') {
@@ -174,6 +332,7 @@ export function useOpenAIRealtimeConversation() {
     },
     [
       addMessage,
+      addUserMessage,
       appendAssistantStreaming,
       removeStreamingAssistant,
       updateStatus,
@@ -214,6 +373,8 @@ export function useOpenAIRealtimeConversation() {
     streamingMsgIdRef.current = null
     userSpeakingStartRef.current = null
     aiResponseStartRef.current = null
+    utteranceAudioStartMsRef.current = null
+    utteranceAudioEndMsRef.current = null
 
     setSessionActive(false)
     setConnecting(false)

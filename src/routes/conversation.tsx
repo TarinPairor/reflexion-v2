@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { User } from 'lucide-react'
 
 import {
   type StatusKind,
@@ -105,24 +106,56 @@ function ConversationPage() {
                 key={m.id}
                 className={
                   m.role === 'user'
-                    ? 'ml-4 rounded-2xl border border-[rgba(50,143,151,0.2)] bg-[rgba(79,184,178,0.08)] px-4 py-3 sm:ml-12'
+                    ? 'ml-4 rounded-2xl border border-[rgba(50,143,151,0.25)] bg-[rgba(79,184,178,0.14)] px-4 py-3.5 sm:ml-12'
                     : m.role === 'assistant'
                       ? 'mr-4 rounded-2xl border border-[rgba(23,58,64,0.12)] bg-white/60 px-4 py-3 sm:mr-12'
                       : 'rounded-2xl border border-[var(--chip-line)] bg-[var(--chip-bg)] px-4 py-3 text-center text-sm text-[var(--sea-ink-soft)]'
                 }
               >
-                <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--sea-ink-soft)]">
-                  {m.role === 'user'
-                    ? 'You'
-                    : m.role === 'assistant'
-                      ? m.streaming
-                        ? 'Assistant (streaming)'
-                        : 'Assistant'
-                      : 'System'}
-                </p>
-                <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-[var(--sea-ink)]">
-                  {m.text}
-                </p>
+                {m.role === 'user' ? (
+                  <>
+                    <div className="mb-2 flex items-center gap-2">
+                      <User
+                        className="h-4 w-4 shrink-0 text-[var(--sea-ink-soft)]"
+                        aria-hidden
+                      />
+                      <span className="text-xs font-bold uppercase tracking-wide text-[var(--sea-ink-soft)]">
+                        You
+                      </span>
+                    </div>
+                    <p className="m-0 whitespace-pre-wrap text-base font-medium leading-relaxed text-[var(--sea-ink)]">
+                      {m.text}
+                    </p>
+                    {m.userMetrics ? (
+                      <>
+                        <hr className="my-3 border-[rgba(23,58,64,0.12)]" />
+                        <p className="m-0 text-xs italic text-[var(--sea-ink-soft)]">
+                          {m.userMetrics.wordCount} word
+                          {m.userMetrics.wordCount !== 1 ? 's' : ''}
+                          {' • '}
+                          Spoke for {m.userMetrics.durationDisplay}
+                          {' • '}
+                          {m.userMetrics.wordsPerSecond != null
+                            ? `${m.userMetrics.wordsPerSecond} words/sec`
+                            : '— words/sec'}
+                        </p>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--sea-ink-soft)]">
+                      {m.role === 'assistant'
+                        ? m.streaming
+                          ? 'Assistant (streaming)'
+                          : 'Assistant'
+                        : 'System'}
+                    </p>
+                    <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-[var(--sea-ink)]">
+                      {m.text}
+                    </p>
+                  </>
+                )}
               </article>
             ))
           )}
