@@ -9,15 +9,14 @@ function App() {
       <section className="island-shell rise-in relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14">
         <div className="pointer-events-none absolute -left-20 -top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(79,184,178,0.32),transparent_66%)]" />
         <div className="pointer-events-none absolute -bottom-20 -right-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(47,106,74,0.18),transparent_66%)]" />
-        <p className="island-kicker mb-3">TanStack Start Base Template</p>
+        <p className="island-kicker mb-3">Reflexion</p>
         <h1 className="display-title mb-5 max-w-3xl text-4xl leading-[1.02] font-bold tracking-tight text-[var(--sea-ink)] sm:text-6xl">
-          Start simple, ship quickly.
+          Your personalized, AI companion
         </h1>
         <p className="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)] sm:text-lg">
-          This base starter intentionally keeps things light: two routes, clean
-          structure, and the essentials you need to build from scratch.
+          Come for your daily cognitive checkups!
         </p>
-        <div className="flex flex-wrap gap-3">
+        {/* <div className="flex flex-wrap gap-3">
           <a
             href="/about"
             className="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] no-underline transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)]"
@@ -32,27 +31,27 @@ function App() {
           >
             Router Guide
           </a>
-        </div>
+        </div> */}
       </section>
 
       <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           [
-            'Type-Safe Routing',
-            'Routes and links stay in sync across every page.',
+            '80% Accuracy',
+            'Detects cognitive impairment with an 80% accuracy.',
           ],
           [
-            'Server Functions',
-            'Call server code from your UI without creating API boilerplate.',
+            'Dashboard',
+            'See your daily activities and habits in the dashboard!',
           ],
           [
-            'Streaming by Default',
-            'Ship progressively rendered responses for faster experiences.',
+            'Conversational partner',
+            'Have dynamic checkups with our AI companion.',
           ],
-          [
-            'Tailwind Native',
-            'Design quickly with utility-first styling and reusable tokens.',
-          ],
+          // [
+          //   'Tailwind Native',
+          //   'Design quickly with utility-first styling and reusable tokens.',
+          // ],
         ].map(([title, desc], index) => (
           <article
             key={title}
@@ -67,7 +66,7 @@ function App() {
         ))}
       </section>
 
-      <section className="island-shell mt-8 rounded-2xl p-6">
+      {/* <section className="island-shell mt-8 rounded-2xl p-6">
         <p className="island-kicker mb-2">Quick Start</p>
         <ul className="m-0 list-disc space-y-2 pl-5 text-sm text-[var(--sea-ink-soft)]">
           <li>
@@ -82,7 +81,7 @@ function App() {
             <code>src/styles.css</code>.
           </li>
         </ul>
-      </section>
+      </section> */}
     </main>
   )
 }
