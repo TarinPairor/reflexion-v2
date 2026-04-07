@@ -73,20 +73,27 @@ export default function Header() {
             Home
           </Link>
           <Link
-            to="/about"
+            to="/conversation"
             className="nav-link"
             activeProps={{ className: 'nav-link is-active' }}
           >
-            About
+            Convo
           </Link>
-          <a
+          <Link
+            to="/dashboard"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+          >
+            Dashboard
+          </Link>
+          {/* <a
             href="https://tanstack.com/start/latest/docs/framework/react/overview"
             className="nav-link"
             target="_blank"
             rel="noreferrer"
           >
             Docs
-          </a>
+          </a> */}
         </div>
       </nav>
     </header>
