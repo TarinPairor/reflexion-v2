@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { addConversationEntry } from '#/api/conversations';
 
 const REALTIME_URL =
   'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17'
@@ -10,7 +11,6 @@ const DEFAULT_TURN_DETECTION = {
   prefix_padding_ms: 300,
   silence_duration_ms: 2000,
 }
-
 
 function metricsFromSegment(
   rawSeconds: number,
@@ -112,6 +112,12 @@ export function useOpenAIRealtimeConversation() {
   const utteranceAudioStartMsRef = useRef<number | null>(null)
   const utteranceAudioEndMsRef = useRef<number | null>(null)
 
+  // Metrics refs to accumulate database metrics for start/stop time, user speaking duration, and user turn data
+  const sessionStartTimeRef = useRef<number | null>(null)
+  const totalSpeakingDurationRef = useRef<number>(0)
+  const userMetricsRef = useRef<UserUtteranceMetrics[]>([])
+
+  // Patch addUserMessage and handleMessage to store userMetrics, update totalSpeakingDurationRef
   const updateStatus = useCallback((kind: StatusKind, text: string) => {
     setStatusKind(kind)
     setStatusText(text)
@@ -167,12 +173,25 @@ export function useOpenAIRealtimeConversation() {
           userMetrics,
         },
       ])
+
+      // We only store metrics if it's a normal finished user message:
+      userMetricsRef.current.push(userMetrics)
+
+      // Extract duration in seconds from string (e.g., "4.10s")
+      if (userMetrics.durationDisplay && userMetrics.durationDisplay !== 'N/A') {
+        const sec = parseFloat(userMetrics.durationDisplay)
+        if (!isNaN(sec) && typeof sec === 'number') {
+          totalSpeakingDurationRef.current += sec * 1000 // store in ms for calculations
+        }
+      }
     },
     [],
   )
 
   const clearMessages = useCallback(() => {
     setMessages([])
+    userMetricsRef.current = []
+    totalSpeakingDurationRef.current = 0
   }, [])
 
   const handleMessage = useCallback(
@@ -380,9 +399,112 @@ export function useOpenAIRealtimeConversation() {
     setConnecting(false)
   }, [])
 
-  const stopConversation = useCallback(() => {
+  function getConversationMetrics() {
+    const sessionEndDate = new Date()
+    const sessionEndTime = sessionEndDate.getTime()
+
+    // Start time
+    const sessionStartTime = sessionStartTimeRef.current
+
+    // Duration in seconds
+    const sessionDurationSec =
+      sessionStartTime && sessionEndTime
+        ? Math.max(0, Math.round((sessionEndTime - sessionStartTime) / 1000))
+        : 0
+
+    // Total user speaking duration (ms, tracked as sum)
+    const userSpeakingMs = totalSpeakingDurationRef.current ?? 0
+
+    // Average speech activity
+    const speechActivity =
+      sessionDurationSec > 0
+        ? userSpeakingMs / 1000 / sessionDurationSec
+        : 0
+
+    // Words spoken: sum of wordCount across all user utterances
+    const userMetrics = userMetricsRef.current
+    const totalWords = userMetrics.reduce(
+      (sum, m) => sum + (m.wordCount ?? 0),
+      0,
+    )
+
+    // Average words/sec: accumulated average of all user utterance wordsPerSecond
+    const avgSpeechRate =
+      userMetrics.length > 0
+        ? (
+            userMetrics.reduce(
+              (sum, m) => sum + (m.wordsPerSecond ?? 0),
+              0,
+            ) / userMetrics.length
+          ).toFixed(2)
+        : '0.00'
+
+    // Helper: pad to 2 digits
+    function pad2(n: number) {
+      return n < 10 ? '0' + n : String(n)
+    }
+    const d = sessionEndDate
+    // Format: 2026-01-14 21:27:21
+    const formattedDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+      d.getDate(),
+    )}`
+    const formattedTime = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(
+      d.getSeconds(),
+    )}`
+
+
+    return {
+      date: formattedDate,
+      time: formattedTime,
+      duration: `${sessionDurationSec}s`,
+      speechActivity: `${(speechActivity * 100).toFixed(1)}%`,
+      avgSpeechRate: `${avgSpeechRate} words/sec`,
+      wordsSpoken: totalWords,
+    }
+  }
+
+
+  const stopConversation = useCallback(async () => {
+    const metrics = getConversationMetrics()
     cleanupResources()
     updateStatus('idle', 'Conversation ended')
+    if (typeof window !== 'undefined') {
+      console.log(
+        `Date\tTime\tDuration\tSpeech Activity\tAvg Speech Rate\tWords Spoken`,
+      )
+      console.log(
+        `${metrics.date}\t${metrics.time}\t${metrics.duration}\t${metrics.speechActivity}\t${metrics.avgSpeechRate}\t${metrics.wordsSpoken}`,
+      )
+
+      // Persist conversation metrics to the database
+      try {
+        // Adapt metrics to match AddConversationInput type expected by API
+        await addConversationEntry({
+          data: {
+            date: metrics.date,
+            time: metrics.time,
+            duration:
+              typeof metrics.duration === 'string'
+                ? parseInt(metrics.duration, 10) || 0
+                : metrics.duration,
+            speechActivity:
+              typeof metrics.speechActivity === 'string'
+                ? parseFloat(metrics.speechActivity) / 100
+                : metrics.speechActivity,
+            avgSpeechRate:
+              typeof metrics.avgSpeechRate === 'string'
+                ? parseFloat(metrics.avgSpeechRate)
+                : metrics.avgSpeechRate,
+            wordsSpoken: metrics.wordsSpoken,
+          },
+        })
+      } catch (e) {
+        console.error('Failed to save conversation entry:', e)
+      }
+
+      return metrics
+    }
+    return null
   }, [cleanupResources, updateStatus])
 
   const startConversation = useCallback(async () => {
@@ -424,6 +546,9 @@ export function useOpenAIRealtimeConversation() {
       dc.onopen = () => {
         setSessionActive(true)
         updateStatus('listening', 'Listening…')
+        sessionStartTimeRef.current = Date.now()
+        userMetricsRef.current = []
+        totalSpeakingDurationRef.current = 0
 
         const sessionConfig = {
           modalities: ['text', 'audio'] as const,
