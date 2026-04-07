@@ -13,8 +13,6 @@ type TrendPoint = {
 type TrendCardConfig = {
   title: string
   legend: string
-  stroke: string
-  fill: string
   points: TrendPoint[]
   valueFormatter?: (value: number) => string
 }
@@ -24,6 +22,11 @@ type ConversationChartsProps = {
 }
 
 const DEFAULT_VALUE_FORMATTER = (value: number) => value.toFixed(1)
+const CHART_COLOR = '#4FB8B2'
+
+function toSafeId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
 
 function parseNumeric(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -109,8 +112,6 @@ function buildLinePath(
 function TrendCard({
   title,
   legend,
-  stroke,
-  fill,
   points,
   valueFormatter = DEFAULT_VALUE_FORMATTER,
 }: TrendCardConfig) {
@@ -118,29 +119,33 @@ function TrendCard({
   const height = 250
   const padding = { top: 30, right: 24, bottom: 48, left: 24 }
   const { linePath, areaPath, scaled } = buildLinePath(points, width, height, padding)
+  const gradientId = `fill-${toSafeId(title)}`
   const xLabels = points.length
     ? [points[0], points[Math.floor((points.length - 1) / 2)], points[points.length - 1]]
     : []
 
   return (
-    <article className="rounded-3xl border border-black/5 bg-white/70 p-5 shadow-[0_10px_25px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+    <article className="rounded-2xl border border-(--chip-line) bg-(--chip-bg) p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-[var(--sea-ink)] sm:text-base">{title}</h3>
-        <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: stroke, borderColor: `${stroke}55` }}>
+        <h3 className="text-sm font-semibold text-(--sea-ink) sm:text-base">{title}</h3>
+        <span
+          className="rounded-full border px-2.5 py-1 text-xs font-medium"
+          style={{ color: CHART_COLOR, borderColor: `${CHART_COLOR}55` }}
+        >
           {legend}
         </span>
       </div>
 
       {points.length === 0 ? (
-        <div className="flex h-[190px] items-center justify-center rounded-2xl border border-dashed border-[rgba(50,143,151,0.3)] text-sm text-[var(--sea-ink-soft)]">
+        <div className="flex h-[190px] items-center justify-center rounded-2xl border border-dashed border-[rgba(50,143,151,0.3)] text-sm text-(--sea-ink-soft)">
           Not enough data yet.
         </div>
       ) : (
         <svg viewBox={`0 0 ${width} ${height}`} className="h-[220px] w-full" role="img" aria-label={title}>
           <defs>
-            <linearGradient id={`fill-${title.replace(/\s+/g, '-').toLowerCase()}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={fill} stopOpacity="0.38" />
-              <stop offset="100%" stopColor={fill} stopOpacity="0.04" />
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={CHART_COLOR} stopOpacity="0.34" />
+              <stop offset="100%" stopColor={CHART_COLOR} stopOpacity="0.05" />
             </linearGradient>
           </defs>
 
@@ -159,12 +164,12 @@ function TrendCard({
             )
           })}
 
-          <path d={areaPath} fill={`url(#fill-${title.replace(/\s+/g, '-').toLowerCase()})`} />
-          <path d={linePath} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" />
+          <path d={areaPath} fill={`url(#${gradientId})`} />
+          <path d={linePath} fill="none" stroke={CHART_COLOR} strokeWidth="3" strokeLinecap="round" />
 
           {scaled.map((point, index) => (
             <g key={`${point.x}-${point.y}-${index}`}>
-              <circle cx={point.x} cy={point.y} r="3.5" fill={stroke} />
+              <circle cx={point.x} cy={point.y} r="3.5" fill={CHART_COLOR} />
             </g>
           ))}
 
@@ -173,7 +178,7 @@ function TrendCard({
               x={scaled[scaled.length - 1].x}
               y={Math.max(18, scaled[scaled.length - 1].y - 10)}
               textAnchor="end"
-              fill={stroke}
+              fill={CHART_COLOR}
               fontSize="11"
               fontWeight="600"
             >
@@ -200,30 +205,22 @@ export function ConversationCharts({ conversations }: ConversationChartsProps) {
     {
       title: 'Speech Rate Trend (words/sec)',
       legend: 'Speech Rate (words/sec)',
-      stroke: '#4FB8B2',
-      fill: '#4FB8B2',
       points: buildMetricSeries(conversations, conversation => conversation.avgSpeechRate),
     },
     {
       title: 'Session Duration Trend',
       legend: 'Duration (minutes)',
-      stroke: '#F26D9D',
-      fill: '#F26D9D',
       points: buildMetricSeries(conversations, conversation => conversation.duration),
     },
     {
       title: 'Speech Activity Trend (%)',
       legend: 'Speech Activity (%)',
-      stroke: '#E7BE4A',
-      fill: '#E7BE4A',
       points: buildMetricSeries(conversations, conversation => conversation.speechActivity),
       valueFormatter: value => `${value.toFixed(0)}%`,
     },
     {
       title: 'Daily Sessions Count',
       legend: 'Sessions',
-      stroke: '#9363F6',
-      fill: '#9363F6',
       points: buildDailySessionSeries(conversations),
       valueFormatter: value => value.toFixed(0),
     },
@@ -231,7 +228,7 @@ export function ConversationCharts({ conversations }: ConversationChartsProps) {
 
   return (
     <section className="mt-10">
-      <h2 className="mb-4 text-lg font-semibold text-[var(--sea-ink)] sm:text-xl">Conversation Insights</h2>
+      <h2 className="mb-4 text-lg font-semibold text-(--sea-ink) sm:text-xl">Conversation Insights</h2>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {cards.map(card => (
           <TrendCard key={card.title} {...card} />
