@@ -403,6 +403,7 @@
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('conversations')">💬 Conversations</button>
                 <button class="tab" onclick="switchTab('assessments')">🧠 TICS Assessments</button>
+                <button class="tab" onclick="switchTab('pi')">🔬 Live Sessions</button>
             </div>
 
             <!-- Conversations Tab -->
@@ -506,6 +507,14 @@
                     </div>
                 </div>
             </div>
+            <!-- Pi Sessions Tab -->
+            <div id="piTab" class="tab-content">
+                <div class="table-actions">
+                    <div></div>
+                    <button class="reload-btn" onclick="reloadPiResults()">🔄 Reload</button>
+                </div>
+                <div id="piContainer"><div class="loading">Loading Pi session...</div></div>
+            </div>
         </div>
     </div>
 
@@ -526,13 +535,17 @@
             currentTab = tab;
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            
+
             if (tab === 'conversations') {
                 document.querySelector('.tab[onclick="switchTab(\'conversations\')"]').classList.add('active');
                 document.getElementById('conversationsTab').classList.add('active');
-            } else {
+            } else if (tab === 'assessments') {
                 document.querySelector('.tab[onclick="switchTab(\'assessments\')"]').classList.add('active');
                 document.getElementById('assessmentsTab').classList.add('active');
+            } else {
+                document.querySelector('.tab[onclick="switchTab(\'pi\')"]').classList.add('active');
+                document.getElementById('piTab').classList.add('active');
+                reloadPiResults();
             }
         }
 
@@ -1152,6 +1165,92 @@
                 }
             } finally {
                 hideLoadingOverlay('assessments');
+            }
+        }
+
+        async function reloadPiResults() {
+            const container = document.getElementById('piContainer');
+            container.innerHTML = '<div class="loading">Loading Pi sessions...</div>';
+            try {
+                const response = await fetch('/results');
+                if (!response.ok) throw new Error('No Pi sessions found');
+                const sessions = await response.json();
+                if (!Array.isArray(sessions) || sessions.length === 0) throw new Error('No sessions yet');
+
+                sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                const scoreRow = (label, val, outOf) => `
+                    <tr>
+                        <td>${label}</td>
+                        <td><strong>${val}/${outOf}</strong></td>
+                        <td>${val >= outOf ? '✅' : '❌'}</td>
+                    </tr>`;
+
+                let html = '<div style="max-width:700px;margin:0 auto;">';
+                sessions.forEach((d, i) => {
+                    const ts = new Date(d.timestamp);
+                    const dateStr = ts.toLocaleDateString('en-GB');
+                    const timeStr = ts.toLocaleTimeString('en-GB');
+                    const scores = d.tics_scores || {};
+                    const ml = d.ml_prediction || {};
+                    const speech = d.speech_metrics || {};
+                    const prediction = (ml.prediction === 'CTRL' || ml.prediction === 'Healthy') ? 'Healthy' : 'MCI';
+                    const predColor = (ml.prediction === 'CTRL' || ml.prediction === 'Healthy') ? '#4caf50' : '#f44336';
+                    const ctrlPct = ml.probabilities ? Math.round((ml.probabilities.CTRL ?? ml.probabilities.HC ?? 0) * 100) : '?';
+                    const mciPct = ml.probabilities ? Math.round((ml.probabilities.MCI ?? 0) * 100) : '?';
+                    const total = scores.total || 0;
+                    const scoreColor = total >= 6 ? '#4caf50' : total >= 4 ? '#ff9800' : '#f44336';
+
+                    html += `
+                        <div class="stat-card" style="margin-bottom:12px;cursor:pointer;" onclick="togglePiSession('pi-${i}')">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="font-size:16px;font-weight:600;">${dateStr} at ${timeStr}</div>
+                                    <div style="color:#666;font-size:14px;margin-top:4px;"><span style="color:${scoreColor};font-weight:600;">TICS: ${total}/7</span> &nbsp;|&nbsp; <span style="color:${predColor};font-weight:600;">${prediction}</span> (${ctrlPct}% Healthy)</div>
+                                </div>
+                                <div style="font-size:20px;" id="arrow-${i}">▼</div>
+                            </div>
+                            <div id="pi-${i}" style="display:none;margin-top:16px;">
+                                <div style="color:#666;margin-bottom:12px;">Speech recorded: ${speech.total_duration_seconds}s across ${speech.segments_recorded} segments</div>
+                                <div style="margin-bottom:16px;">
+                                    <div class="stat-label" style="font-weight:700;">ML Voice Analysis</div>
+                                    <div style="font-size:24px;font-weight:700;color:${predColor};">${prediction}</div>
+                                    <div style="color:#666;">Healthy: ${ctrlPct}% &nbsp;|&nbsp; MCI: ${mciPct}%</div>
+                                </div>
+                                <div class="stat-label" style="font-weight:700;">TICS-m Scores</div>
+                                <div style="font-size:24px;font-weight:700;color:${scoreColor};margin-bottom:8px;">Total: ${total}/7</div>
+                                <table class="records-table" style="margin-top:8px;">
+                                    <thead><tr><th>Question</th><th>Score</th><th></th></tr></thead>
+                                    <tbody>
+                                        ${scoreRow('Date orientation', scores.date_orientation || 0, 1)}
+                                        ${scoreRow('City orientation', scores.city_orientation || 0, 1)}
+                                        ${scoreRow('Digits forward (8-1-4)', scores.digits_forward || 0, 1)}
+                                        ${scoreRow('Digits backward (6-2-9)', scores.digits_backward || 0, 1)}
+                                        ${scoreRow('Word recall: River', scores.three_word_recall_river || 0, 1)}
+                                        ${scoreRow('Word recall: Chair', scores.three_word_recall_chair || 0, 1)}
+                                        ${scoreRow('Word recall: Mango', scores.three_word_recall_mango || 0, 1)}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>`;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state"><h3>No Pi sessions found</h3><p>Run a session on the Pi first</p></div>';
+            }
+        }
+
+        function togglePiSession(id) {
+            const el = document.getElementById(id);
+            const index = id.split('-')[1];
+            const arrow = document.getElementById('arrow-' + index);
+            if (el.style.display === 'none') {
+                el.style.display = 'block';
+                arrow.textContent = '▲';
+            } else {
+                el.style.display = 'none';
+                arrow.textContent = '▼';
             }
         }
 

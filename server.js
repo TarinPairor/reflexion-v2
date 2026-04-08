@@ -7,6 +7,22 @@ require('dotenv').config();
 const PORT = 3000;
 const DATA_FILE = path.join(__dirname, 'conversation_data.json');
 const ASSESSMENTS_FILE = path.join(__dirname, 'assessments_data.json');
+const RESULTS_FILE = path.join(__dirname, 'session_results.json');
+
+// Ensure results file exists as an array
+if (!fs.existsSync(RESULTS_FILE)) {
+    fs.writeFileSync(RESULTS_FILE, JSON.stringify([], null, 2));
+} else {
+    // Migrate old single-object format to array
+    try {
+        const existing = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8'));
+        if (!Array.isArray(existing)) {
+            fs.writeFileSync(RESULTS_FILE, JSON.stringify([existing], null, 2));
+        }
+    } catch (e) {
+        fs.writeFileSync(RESULTS_FILE, JSON.stringify([], null, 2));
+    }
+}
 
 // Ensure data file exists
 if (!fs.existsSync(DATA_FILE)) {
@@ -289,6 +305,37 @@ const server = http.createServer((req, res) => {
             }
         } catch (error) {
             console.error('Error deleting assessment:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: error.message }));
+        }
+    }
+    // API: Receive session results from Pi (called by pi_audio_bridge.py)
+    else if (req.url === '/results' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const newResult = JSON.parse(body);
+                const existing = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8'));
+                existing.push(newResult);
+                fs.writeFileSync(RESULTS_FILE, JSON.stringify(existing, null, 2));
+                console.log('📊 Session results received from Pi and saved');
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                console.error('Error saving results:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+    }
+    // API: Serve session results to the dashboard
+    else if (req.url === '/results' && req.method === 'GET') {
+        try {
+            const data = fs.readFileSync(RESULTS_FILE, 'utf8');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(data);
+        } catch (error) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: error.message }));
         }
