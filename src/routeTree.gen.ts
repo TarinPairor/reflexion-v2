@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TestRouteImport } from './routes/test'
+import { Route as FaceRecognitionRouteImport } from './routes/face-recognition'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConversationRouteImport } from './routes/conversation'
 import { Route as AboutRouteImport } from './routes/about'
@@ -18,6 +19,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const TestRoute = TestRouteImport.update({
   id: '/test',
   path: '/test',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FaceRecognitionRoute = FaceRecognitionRouteImport.update({
+  id: '/face-recognition',
+  path: '/face-recognition',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/conversation': typeof ConversationRoute
   '/dashboard': typeof DashboardRoute
+  '/face-recognition': typeof FaceRecognitionRoute
   '/test': typeof TestRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/conversation': typeof ConversationRoute
   '/dashboard': typeof DashboardRoute
+  '/face-recognition': typeof FaceRecognitionRoute
   '/test': typeof TestRoute
 }
 export interface FileRoutesById {
@@ -61,14 +69,34 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/conversation': typeof ConversationRoute
   '/dashboard': typeof DashboardRoute
+  '/face-recognition': typeof FaceRecognitionRoute
   '/test': typeof TestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/conversation' | '/dashboard' | '/test'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/conversation'
+    | '/dashboard'
+    | '/face-recognition'
+    | '/test'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/conversation' | '/dashboard' | '/test'
-  id: '__root__' | '/' | '/about' | '/conversation' | '/dashboard' | '/test'
+  to:
+    | '/'
+    | '/about'
+    | '/conversation'
+    | '/dashboard'
+    | '/face-recognition'
+    | '/test'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/conversation'
+    | '/dashboard'
+    | '/face-recognition'
+    | '/test'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,6 +104,7 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   ConversationRoute: typeof ConversationRoute
   DashboardRoute: typeof DashboardRoute
+  FaceRecognitionRoute: typeof FaceRecognitionRoute
   TestRoute: typeof TestRoute
 }
 
@@ -86,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/test'
       fullPath: '/test'
       preLoaderRoute: typeof TestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/face-recognition': {
+      id: '/face-recognition'
+      path: '/face-recognition'
+      fullPath: '/face-recognition'
+      preLoaderRoute: typeof FaceRecognitionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -124,6 +160,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   ConversationRoute: ConversationRoute,
   DashboardRoute: DashboardRoute,
+  FaceRecognitionRoute: FaceRecognitionRoute,
   TestRoute: TestRoute,
 }
 export const routeTree = rootRouteImport
