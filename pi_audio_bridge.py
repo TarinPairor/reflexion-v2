@@ -61,6 +61,8 @@ MAX_SESSION_MIN = int(os.environ.get("MAX_SESSION_MIN", "25"))
 FLASK_URL            = f"http://{MAC_IP}:5001/analyze"
 NODE_URL             = f"http://{MAC_IP}:3000"
 SESSION_RESULTS_FILE = "session_results.json"
+DEBUG_LOG_FILE       = "session_debug.json"       # latest session (overwritten)
+DEBUG_LOG_FILE_PREV  = "session_debug_prev.json"  # previous session
 
 # ── AUDIO SETTINGS ────────────────────────────────────────────────────────────
 # Hardware is locked at 44.1 kHz mono (Waveshare USB module).
@@ -102,22 +104,56 @@ and warm throughout.
 
 IMPORTANT RULES:
 - Do NOT tell the patient whether their answers are correct or incorrect.
-- Complete ALL THREE stages fully in order. Do not skip any stage or any question.
+- Complete ALL FOUR stages fully in order. Do not skip any stage or any question.
 - Do NOT call submit_assessment_results until you have: completed Stage 1 free
   conversation, asked ALL FIVE questions in Stage 2 (Q1 through Q5 including the
-  three-word repetition), completed Stage 3 image description, asked the delayed
-  word recall, said the full goodbye. Only then call submit_assessment_results.
+  three-word repetition), completed Stage 3 free conversation, asked the delayed
+  word recall in Stage 4, said the full goodbye. Only then call submit_assessment_results.
 - If anything interrupts you mid-sentence, continue from where you left off.
   Never skip ahead or end early.
+- SCORING — DATE: The patient gets 1 point if they give the correct month and
+  year, and their day is within ±1 day of the actual date. Be strict on month
+  and year — wrong month or wrong year = 0 points regardless.
+- SCORING — CITY: The expected answer is Singapore. Any answer that is not
+  Singapore (or a neighbourhood within Singapore) scores 0. Be strict.
+- SCORING — DIGITS FORWARD AND BACKWARD: Be lenient for transcription errors.
+  The speech-to-text system may mishear numbers — for example "nine two six"
+  may appear as "9 to 6" or "nine to six". Use context to judge correctness —
+  if the patient clearly attempted the right answer, give credit even if the
+  wording looks slightly off.
+- SCORING — WORD RECALL: Only give credit for river, chair, and mango if the
+  patient says each word AFTER you ask them to recall the words in Stage 4.
+  Do NOT give credit based on the patient repeating the words in Stage 2 when
+  you first introduced them — that is immediate repetition, not delayed recall.
+  Be lenient for transcription errors (e.g. "mango" heard as "man go" still
+  counts), but only if said during the Stage 4 recall.
+- WORD RECALL CLARIFICATION: If the patient's recall answer seems cut off or
+  incomplete, gently ask: "Sorry, could you say those words again for me?"
+  before scoring.
+- EARLY END — PATIENT REQUEST: If the patient says they want to leave or stop
+  (e.g. "I need to go", "I'm done", "end the session", "bye"), respond with
+  exactly: "Of course, I completely understand. Just to confirm — would you
+  like to end today's session?" Then wait for their reply.
+  - If they say yes, or repeat that they want to leave (e.g. "yes", "I gotta
+    go", "yep", "please"), treat that as confirmation. Say a warm, brief
+    goodbye (e.g. "It was lovely chatting with you. Take care and have a
+    wonderful day!"), then immediately call end_session_early with whatever
+    scores you have so far, using null for questions not yet reached.
+  - If they say no or seem unsure, continue the session normally.
+  - Do NOT ask for confirmation a second time — once you have asked, the next
+    response is always treated as their answer.
+- EARLY END — SYSTEM PROMPT: If you receive a [SYSTEM: ...] message instructing
+  you to check on the patient or end the session, follow those instructions
+  immediately and precisely.
 
 ════════════════════════════════════════
-STAGE 1 — FREE CONVERSATION (~3 minutes)
+STAGE 1 — FREE CONVERSATION (~2-3 minutes)
 ════════════════════════════════════════
 Begin by warmly greeting the patient. Introduce yourself as Aria. Have a
 natural, friendly conversation — ask how they are feeling today, what they have
 been up to recently, what they enjoy doing. Keep it light and warm.
 
-After approximately 3 minutes, transition naturally:
+After approximately 2-3 minutes, transition naturally:
 "That's lovely to hear. Now I'd like to ask you a few simple questions if
 that's alright with you."
 
@@ -137,24 +173,21 @@ Q5: "I'm going to say three words. Please listen carefully and try to remember
      River... Chair... Mango.
      Can you repeat those three words back to me now?"
 
-After Q5, say something warm like "Wonderful, thank you so much."
+After Q5, transition warmly back to conversation:
+"Wonderful, thank you so much. Let's just have a bit more of a chat."
 
 ════════════════════════════════════════
-STAGE 3 — IMAGE DESCRIPTION TASK
+STAGE 3 — FREE CONVERSATION (~3-4 minutes)
 ════════════════════════════════════════
-Say: "I'd like you to picture a scene in your mind and describe it for me in
-as much detail as you can. Here is the scene: Imagine a cosy living room.
-There is a comfortable sofa with cushions. In front of the sofa is a wooden
-coffee table with a vase of flowers. Along one wall is a bookshelf filled with
-books. In the corner there is a television on a stand. On the opposite wall
-there is a window with curtains, and sunlight is coming through. There is a
-floor lamp in one corner. And on the walls there are several framed family
-photographs. Please describe everything you can see in this room in as much
-detail as possible."
+Continue with warm, natural conversation for another 3-4 minutes. Ask about
+their family, hobbies, favourite foods, happy memories, or anything they seem
+enthusiastic about. Keep it relaxed and enjoyable for the patient.
 
-Wait for their full description, then say:
-"Thank you so much. Now — do you remember the three words I asked you to
-remember earlier?"
+════════════════════════════════════════
+STAGE 4 — DELAYED WORD RECALL + GOODBYE
+════════════════════════════════════════
+After approximately 3-4 minutes of conversation, transition naturally:
+"Now — do you remember the three words I asked you to remember earlier?"
 
 Wait for their response.
 
@@ -208,7 +241,43 @@ TOOLS = [
             },
             "required": ["tics_scores"],
         },
-    }
+    },
+    {
+        "type": "function",
+        "name": "end_session_early",
+        "description": (
+            "End the session early because the patient needs to leave or is "
+            "unresponsive. Use null for any TICS-m questions not yet reached."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why the session ended early (e.g. 'patient requested to leave', 'patient unresponsive')",
+                },
+                "tics_scores": {
+                    "type": "object",
+                    "description": "Partial TICS-m scores — use null for questions not yet reached",
+                    "properties": {
+                        "date_orientation":        {"type": ["integer", "null"]},
+                        "city_orientation":         {"type": ["integer", "null"]},
+                        "digits_forward":           {"type": ["integer", "null"]},
+                        "digits_backward":          {"type": ["integer", "null"]},
+                        "three_word_recall_river":  {"type": ["integer", "null"]},
+                        "three_word_recall_chair":  {"type": ["integer", "null"]},
+                        "three_word_recall_mango":  {"type": ["integer", "null"]},
+                        "total":                    {"type": ["integer", "null"]},
+                    },
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional brief notes about why the session ended early",
+                },
+            },
+            "required": ["reason"],
+        },
+    },
 ]
 
 
@@ -250,6 +319,21 @@ class AudioBridge:
         self.assess_notes   = ""
         self._fn_buf        = {}   # call_id → accumulated JSON string for function calls
         self._session_started = False  # only trigger greeting once
+        self._playback_done_task = None  # track the unmute countdown task
+        self._debug_log = []             # list of events logged this session
+
+        # Patient silence detection
+        self._aria_finished_time        = None   # when ai_speaking last went False
+        self._patient_spoken_since_aria = False  # True once patient speaks after Aria
+        self._patient_silence_warned    = False  # True after first "are you still there?"
+        self._patient_silence_warn_time = None   # when we sent the warning
+
+        # Early end tracking
+        self._early_end_reason = ""
+
+        # Watchdog: detect when AI stops responding
+        self._last_ai_activity    = None   # time of last response.audio.delta / response.created
+        self._response_in_progress = False  # True while OpenAI is generating a response
 
     # ── sounddevice callbacks (called in a real-time audio thread) ────────────
 
@@ -287,6 +371,7 @@ class AudioBridge:
                 self._play_buf.clear()
 
         samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+        samples = np.clip(samples * 2.0, -1.0, 1.0)   # volume boost (2.0 = double)
         outdata[:, 0] = samples
         # Zero any extra channels if the device happens to be stereo
         for ch in range(1, outdata.shape[1]):
@@ -300,15 +385,19 @@ class AudioBridge:
         queued for the speaker. Poll until the buffer is empty, then unmute.
         Max wait of 5 seconds to avoid getting stuck if something goes wrong.
         """
-        deadline = asyncio.get_event_loop().time() + 5.0
+        deadline = asyncio.get_event_loop().time() + 30.0
         while asyncio.get_event_loop().time() < deadline:
             with self._play_lock:
                 if len(self._play_buf) == 0:
                     break
             await asyncio.sleep(0.05)   # check every 50 ms
-        # Extra margin for room echo to die down and for pauses within AI speech
+        # Extra margin for room echo to die down
         await asyncio.sleep(0.8)
         self.ai_speaking = False
+        self._aria_finished_time        = datetime.now()
+        self._patient_spoken_since_aria = False
+        self._dlog("ai_speaking → FALSE (buffer drained)")
+        self._last_ai_activity = datetime.now()   # watchdog starts AFTER speaker finishes
         if self.ws:
             try:
                 await self.ws.send(json.dumps({
@@ -321,6 +410,29 @@ class AudioBridge:
             except Exception:
                 pass
         log.debug("AI finished speaking — listening for patient")
+
+    # ── Debug logging ─────────────────────────────────────────────────────────
+
+    def _dlog(self, event_type, extra=None):
+        """Append a timestamped entry to the debug log."""
+        entry = {
+            "time":        datetime.now().strftime("%H:%M:%S.%f")[:-3],
+            "event":       event_type,
+            "ai_speaking": self.ai_speaking,
+            "buf_bytes":   len(self._play_buf),
+        }
+        if extra:
+            entry.update(extra)
+        self._debug_log.append(entry)
+
+    def _save_debug_log(self):
+        """Rotate previous log and save current session log."""
+        import shutil
+        if os.path.exists(DEBUG_LOG_FILE):
+            shutil.move(DEBUG_LOG_FILE, DEBUG_LOG_FILE_PREV)
+        with open(DEBUG_LOG_FILE, "w") as f:
+            json.dump(self._debug_log, f, indent=2)
+        log.info("Debug log saved → %s", DEBUG_LOG_FILE)
 
     # ── Mic → WebSocket streaming coroutine ───────────────────────────────────
 
@@ -339,7 +451,14 @@ class AudioBridge:
             resampled = resample_poly(pcm.astype(np.float32), _R_UP, _R_DOWN)
             pcm24 = resampled.clip(-32768, 32767).astype(np.int16)
 
-            if self.ws and not self.ai_speaking:
+            # Only send mic audio if Aria is not speaking AND the play buffer
+            # is empty — this prevents sending audio while Aria's voice is still
+            # physically playing through the speaker, even if ai_speaking flag
+            # is temporarily out of sync with the actual buffer state
+            with self._play_lock:
+                buffer_has_audio = len(self._play_buf) > 0
+
+            if self.ws and not self.ai_speaking and not buffer_has_audio:
                 try:
                     await self.ws.send(json.dumps({
                         "type":  "input_audio_buffer.append",
@@ -408,12 +527,32 @@ class AudioBridge:
                 log.info("Session configured — starting assessment")
                 await self._trigger_greeting()
 
+        # ── Response lifecycle tracking (for watchdog) ───────────────────────
+        elif t == "response.created":
+            self._response_in_progress = True
+            self._last_ai_activity = datetime.now()
+            self._dlog("response.created")
+
+        elif t == "response.done":
+            self._response_in_progress = False
+            self._last_ai_activity = datetime.now()
+            self._dlog("response.done")
+            # Start the unmute countdown only after the ENTIRE response is done
+            # (not per-chunk) to avoid gaps between chunks reopening the mic
+            if self.ai_speaking:
+                if self._playback_done_task and not self._playback_done_task.done():
+                    self._playback_done_task.cancel()
+                self._playback_done_task = asyncio.create_task(self._wait_for_playback_done())
+
         # ── AI audio playback ─────────────────────────────────────────────────
         elif t == "response.audio.delta":
             # A chunk of AI speech audio has arrived
+            self._last_ai_activity = datetime.now()
             if not self.ai_speaking:
                 self.ai_speaking = True
                 self._recording_active = False
+                self._patient_spoken_since_aria = False  # reset: waiting for patient after this
+                self._dlog("ai_speaking → TRUE")
                 try:
                     await self.ws.send(json.dumps({
                         "type": "session.update",
@@ -434,11 +573,15 @@ class AudioBridge:
                     self._play_buf.extend(pcm44.tobytes())
 
         elif t == "response.audio.done":
-            # Don't unmute immediately — wait until the play buffer drains
-            asyncio.create_task(self._wait_for_playback_done())
+            # Audio chunks are done — but we wait for response.done before
+            # starting the unmute countdown, to avoid gaps between chunks
+            self._dlog("response.audio.done")
 
         # ── Patient speech detection (server VAD) ─────────────────────────────
         elif t == "input_audio_buffer.speech_started":
+            self._dlog("speech_started")
+            self._patient_spoken_since_aria = True  # patient responded
+            self._patient_silence_warned    = False  # reset warning for next silence
             if not self.ai_speaking:
                 self._recording_active = True
                 with self._seg_lock:
@@ -490,12 +633,131 @@ class AudioBridge:
                     self.tics_scores = {"parse_error": str(e)}
 
                 await self._ack_function_call(cid)
-                await asyncio.sleep(2)   # let any final AI audio finish playing
+                # Wait for goodbye audio to fully finish playing before closing
+                deadline = asyncio.get_event_loop().time() + 10.0
+                while asyncio.get_event_loop().time() < deadline:
+                    with self._play_lock:
+                        if len(self._play_buf) == 0:
+                            break
+                    await asyncio.sleep(0.05)
+                await asyncio.sleep(1.0)  # small margin after buffer drains
+                self.session_done.set()
+
+            elif fn_name == "end_session_early":
+                log.info("━" * 50)
+                log.info("Session ending early")
+                try:
+                    args = json.loads(args_str)
+                    self._early_end_reason = args.get("reason", "unknown")
+                    self.tics_scores       = args.get("tics_scores")
+                    self.assess_notes      = args.get("notes", "")
+                    log.info("Early end reason: %s", self._early_end_reason)
+                    log.info("Partial TICS-m scores: %s",
+                             json.dumps(self.tics_scores, indent=2))
+                except Exception as e:
+                    log.error("Could not parse early end args: %s", e)
+
+                await self._ack_function_call(cid)
+                # Wait for Aria's goodbye to finish playing
+                deadline = asyncio.get_event_loop().time() + 10.0
+                while asyncio.get_event_loop().time() < deadline:
+                    with self._play_lock:
+                        if len(self._play_buf) == 0:
+                            break
+                    await asyncio.sleep(0.05)
+                await asyncio.sleep(1.0)
                 self.session_done.set()
 
         # ── Errors ────────────────────────────────────────────────────────────
         elif t == "error":
             log.error("OpenAI error: %s", event.get("error", event))
+
+    # ── Watchdog: detect and recover from AI silence ──────────────────────────
+
+    async def _watchdog(self):
+        """
+        Runs in the background throughout the session.
+        If the AI hasn't responded for 30 seconds after it was last active,
+        send response.create to nudge it back into action.
+        Also enforces the session timeout independently of the event loop.
+        """
+        await asyncio.sleep(15)   # give session time to start up
+        while not self.shutdown_req.is_set() and not self.session_done.is_set():
+            await asyncio.sleep(5)
+
+            # Session hard timeout
+            if self.session_start:
+                elapsed = (datetime.now() - self.session_start).total_seconds()
+                if elapsed > MAX_SESSION_MIN * 60:
+                    log.warning("Session timeout reached (%d min) — ending", MAX_SESSION_MIN)
+                    self.session_done.set()
+                    break
+
+            # Skip all checks if AI is already speaking/thinking, or session not started
+            if (self.ai_speaking or self._response_in_progress
+                    or not self._session_started or not self._last_ai_activity):
+                continue
+
+            # ── Patient silence detection ─────────────────────────────────────
+            # If Aria finished speaking and patient hasn't responded yet
+            if (self._aria_finished_time and not self._patient_spoken_since_aria):
+                patient_silence = (datetime.now() - self._aria_finished_time).total_seconds()
+
+                if not self._patient_silence_warned and patient_silence > 15:
+                    # First warning — ask Aria to check in
+                    log.warning("Patient silent for 15s — asking Aria to check in")
+                    self._patient_silence_warned    = True
+                    self._patient_silence_warn_time = datetime.now()
+                    if self.ws:
+                        try:
+                            await self.ws.send(json.dumps({
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "message",
+                                    "role": "user",
+                                    "content": [{"type": "input_text",
+                                                 "text": "[SYSTEM: The patient has been silent for 15 seconds. Gently ask if they are still there, e.g. 'Are you still with me?']"}]
+                                }
+                            }))
+                            await self.ws.send(json.dumps({"type": "response.create"}))
+                            self._last_ai_activity = datetime.now()
+                        except Exception as e:
+                            log.warning("Could not send check-in prompt: %s", e)
+
+                elif (self._patient_silence_warned and self._patient_silence_warn_time):
+                    warned_silence = (datetime.now() - self._patient_silence_warn_time).total_seconds()
+                    if warned_silence > 15:
+                        # Second timeout — patient unresponsive, end session
+                        log.warning("Patient still silent after check-in — ending session")
+                        self._patient_silence_warn_time = None  # prevent re-triggering
+                        if self.ws:
+                            try:
+                                await self.ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "message",
+                                        "role": "user",
+                                        "content": [{"type": "input_text",
+                                                     "text": "[SYSTEM: Patient is unresponsive. Say a brief goodbye and immediately call end_session_early with reason 'patient unresponsive' and null for any scores not yet collected.]"}]
+                                    }
+                                }))
+                                await self.ws.send(json.dumps({"type": "response.create"}))
+                                self._last_ai_activity = datetime.now()
+                            except Exception as e:
+                                log.warning("Could not send end prompt: %s", e)
+
+            # ── AI silence nudge (existing) ───────────────────────────────────
+            silence = (datetime.now() - self._last_ai_activity).total_seconds()
+            if silence > 30:
+                log.warning(
+                    "AI has been silent for %.0fs — sending nudge to continue", silence
+                )
+                if self.ws:
+                    try:
+                        await self.ws.send(json.dumps({"type": "response.create"}))
+                        self._last_ai_activity = datetime.now()  # reset to avoid spam
+                    except Exception as e:
+                        log.warning("Could not nudge AI: %s", e)
 
     # ── WebSocket connection loop ─────────────────────────────────────────────
 
@@ -517,8 +779,8 @@ class AudioBridge:
                 self.session_start = datetime.now()
                 log.info("Connected!  Session started at %s", self.session_start.strftime("%H:%M:%S"))
 
-                mic_task     = asyncio.create_task(self._stream_mic())
-                timeout_secs = MAX_SESSION_MIN * 60
+                mic_task      = asyncio.create_task(self._stream_mic())
+                watchdog_task = asyncio.create_task(self._watchdog())
 
                 try:
                     async for raw_message in ws:
@@ -528,18 +790,9 @@ class AudioBridge:
                             await self._handle_event(json.loads(raw_message))
                         except Exception as e:
                             log.warning("Error handling event: %s", e)
-
-                        # Check session timeout
-                        elapsed = (datetime.now() - self.session_start).total_seconds()
-                        if elapsed > timeout_secs:
-                            log.warning(
-                                "Session timeout reached (%d minutes) — ending session",
-                                MAX_SESSION_MIN
-                            )
-                            self.session_done.set()
-                            break
                 finally:
                     mic_task.cancel()
+                    watchdog_task.cancel()
                     self.ws = None
 
         except Exception as e:
@@ -622,6 +875,8 @@ class AudioBridge:
             "timestamp":        self.session_start.isoformat()
                                 if self.session_start else None,
             "completed_at":     datetime.now().isoformat(),
+            "early_end":        bool(self._early_end_reason),
+            "early_end_reason": self._early_end_reason if self._early_end_reason else None,
             "tics_scores":      self.tics_scores,
             "assessment_notes": self.assess_notes,
             "ml_prediction":    ml_result,
@@ -648,6 +903,7 @@ class AudioBridge:
             log.warning("Could not reach dashboard server at %s: %s", NODE_URL, e)
             log.warning("Results are still saved locally in %s", SESSION_RESULTS_FILE)
 
+        self._save_debug_log()
         log.info("═" * 50)
         log.info("All done.")
 

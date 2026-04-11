@@ -1179,12 +1179,12 @@
 
                 sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-                const scoreRow = (label, val, outOf) => `
-                    <tr>
-                        <td>${label}</td>
-                        <td><strong>${val}/${outOf}</strong></td>
-                        <td>${val >= outOf ? '✅' : '❌'}</td>
-                    </tr>`;
+                const scoreRow = (label, val, outOf) => {
+                    if (val === null || val === undefined) {
+                        return `<tr><td>${label}</td><td><strong style="color:#999;">NIL</strong></td><td>—</td></tr>`;
+                    }
+                    return `<tr><td>${label}</td><td><strong>${val}/${outOf}</strong></td><td>${val >= outOf ? '✅' : '❌'}</td></tr>`;
+                };
 
                 let html = '<div style="max-width:700px;margin:0 auto;">';
                 sessions.forEach((d, i) => {
@@ -1198,15 +1198,17 @@
                     const predColor = (ml.prediction === 'CTRL' || ml.prediction === 'Healthy') ? '#4caf50' : '#f44336';
                     const ctrlPct = ml.probabilities ? Math.round((ml.probabilities.CTRL ?? ml.probabilities.HC ?? 0) * 100) : '?';
                     const mciPct = ml.probabilities ? Math.round((ml.probabilities.MCI ?? 0) * 100) : '?';
-                    const total = scores.total || 0;
-                    const scoreColor = total >= 6 ? '#4caf50' : total >= 4 ? '#ff9800' : '#f44336';
+                    const earlyEnd = d.early_end || false;
+                    const total = scores.total ?? null;
+                    const scoreColor = total === null ? '#999' : total >= 6 ? '#4caf50' : total >= 4 ? '#ff9800' : '#f44336';
+                    const totalLabel = total === null ? 'NIL' : `${total}/7`;
 
                     html += `
                         <div class="stat-card" style="margin-bottom:12px;cursor:pointer;" onclick="togglePiSession('pi-${i}')">
                             <div style="display:flex;justify-content:space-between;align-items:center;">
                                 <div>
                                     <div style="font-size:16px;font-weight:600;">${dateStr} at ${timeStr}</div>
-                                    <div style="color:#666;font-size:14px;margin-top:4px;"><span style="color:${scoreColor};font-weight:600;">TICS: ${total}/7</span> &nbsp;|&nbsp; <span style="color:${predColor};font-weight:600;">${prediction}</span> (${ctrlPct}% Healthy)</div>
+                                    <div style="color:#666;font-size:14px;margin-top:4px;">${earlyEnd ? '<span style="color:#ff9800;font-weight:600;">⚠ Incomplete session</span> &nbsp;|&nbsp; ' : ''}<span style="color:${scoreColor};font-weight:600;">TICS: ${totalLabel}</span> &nbsp;|&nbsp; <span style="color:${predColor};font-weight:600;">${prediction}</span> (${ctrlPct}% Healthy)</div>
                                 </div>
                                 <div style="font-size:20px;" id="arrow-${i}">▼</div>
                             </div>
@@ -1218,17 +1220,18 @@
                                     <div style="color:#666;">Healthy: ${ctrlPct}% &nbsp;|&nbsp; MCI: ${mciPct}%</div>
                                 </div>
                                 <div class="stat-label" style="font-weight:700;">TICS-m Scores</div>
-                                <div style="font-size:24px;font-weight:700;color:${scoreColor};margin-bottom:8px;">Total: ${total}/7</div>
+                                <div style="font-size:24px;font-weight:700;color:${scoreColor};margin-bottom:8px;">Total: ${totalLabel}</div>
+                                ${earlyEnd ? `<div style="color:#ff9800;font-size:13px;margin-bottom:8px;">⚠ Session ended early: ${d.early_end_reason || 'unknown reason'}</div>` : ''}
                                 <table class="records-table" style="margin-top:8px;">
                                     <thead><tr><th>Question</th><th>Score</th><th></th></tr></thead>
                                     <tbody>
-                                        ${scoreRow('Date orientation', scores.date_orientation || 0, 1)}
-                                        ${scoreRow('City orientation', scores.city_orientation || 0, 1)}
-                                        ${scoreRow('Digits forward (8-1-4)', scores.digits_forward || 0, 1)}
-                                        ${scoreRow('Digits backward (6-2-9)', scores.digits_backward || 0, 1)}
-                                        ${scoreRow('Word recall: River', scores.three_word_recall_river || 0, 1)}
-                                        ${scoreRow('Word recall: Chair', scores.three_word_recall_chair || 0, 1)}
-                                        ${scoreRow('Word recall: Mango', scores.three_word_recall_mango || 0, 1)}
+                                        ${scoreRow('Date orientation', scores.date_orientation ?? null, 1)}
+                                        ${scoreRow('City orientation', scores.city_orientation ?? null, 1)}
+                                        ${scoreRow('Digits forward (8-1-4)', scores.digits_forward ?? null, 1)}
+                                        ${scoreRow('Digits backward (6-2-9)', scores.digits_backward ?? null, 1)}
+                                        ${scoreRow('Word recall: River', scores.three_word_recall_river ?? null, 1)}
+                                        ${scoreRow('Word recall: Chair', scores.three_word_recall_chair ?? null, 1)}
+                                        ${scoreRow('Word recall: Mango', scores.three_word_recall_mango ?? null, 1)}
                                     </tbody>
                                 </table>
                             </div>
