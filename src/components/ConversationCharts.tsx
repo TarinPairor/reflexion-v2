@@ -1,5 +1,6 @@
 type ConversationRecord = {
   date?: string
+  time?: string
   duration?: number
   speechActivity?: number
   avgSpeechRate?: number
@@ -42,6 +43,33 @@ function formatDateLabel(dateValue: string | undefined, fallbackIndex: number): 
   const parsed = new Date(`${dateValue}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return dateValue
   return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function getConversationTimestamp(conversation: ConversationRecord): number | null {
+  if (!conversation.date) return null
+
+  const dateTime = conversation.time
+    ? new Date(`${conversation.date}T${conversation.time}`)
+    : new Date(`${conversation.date}T00:00:00`)
+
+  const timestamp = dateTime.getTime()
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
+function sortConversationsChronologically(conversations: ConversationRecord[]): ConversationRecord[] {
+  return conversations
+    .map((conversation, index) => ({ conversation, index }))
+    .sort((a, b) => {
+      const aTimestamp = getConversationTimestamp(a.conversation)
+      const bTimestamp = getConversationTimestamp(b.conversation)
+
+      if (aTimestamp == null && bTimestamp == null) return a.index - b.index
+      if (aTimestamp == null) return 1
+      if (bTimestamp == null) return -1
+      if (aTimestamp !== bTimestamp) return aTimestamp - bTimestamp
+      return a.index - b.index
+    })
+    .map(item => item.conversation)
 }
 
 function buildMetricSeries(
@@ -201,27 +229,29 @@ function TrendCard({
 }
 
 export function ConversationCharts({ conversations }: ConversationChartsProps) {
+  const chronologicalConversations = sortConversationsChronologically(conversations)
+
   const cards: TrendCardConfig[] = [
     {
       title: 'Speech Rate Trend (words/sec)',
       legend: 'Speech Rate (words/sec)',
-      points: buildMetricSeries(conversations, conversation => conversation.avgSpeechRate),
+      points: buildMetricSeries(chronologicalConversations, conversation => conversation.avgSpeechRate),
     },
     {
       title: 'Session Duration Trend',
       legend: 'Duration (minutes)',
-      points: buildMetricSeries(conversations, conversation => conversation.duration),
+      points: buildMetricSeries(chronologicalConversations, conversation => conversation.duration),
     },
     {
       title: 'Speech Activity Trend (%)',
       legend: 'Speech Activity (%)',
-      points: buildMetricSeries(conversations, conversation => conversation.speechActivity),
+      points: buildMetricSeries(chronologicalConversations, conversation => conversation.speechActivity),
       valueFormatter: value => `${value.toFixed(0)}%`,
     },
     {
       title: 'Daily Sessions Count',
       legend: 'Sessions',
-      points: buildDailySessionSeries(conversations),
+      points: buildDailySessionSeries(chronologicalConversations),
       valueFormatter: value => value.toFixed(0),
     },
   ]
