@@ -15,6 +15,9 @@ import { getUserConversations } from '../api/conversations'
 import { getUserAssessments } from '../api/assessment'
 
 function DashboardPage() {
+  const [activeView, setActiveView] = useState<'conversations' | 'assessments'>(
+    'conversations',
+  )
   const getUserConversationsFn = useServerFn(getUserConversations)
   const getUserAssessmentsFn = useServerFn(getUserAssessments)
   const [conversationData, setConversationData] = useState<any[]>([])
@@ -125,169 +128,193 @@ function DashboardPage() {
         <div className="pointer-events-none absolute -left-20 -top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(79,184,178,0.32),transparent_66%)]" />
         <div className="pointer-events-none absolute -bottom-20 -right-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(47,106,74,0.18),transparent_66%)]" />
         <h1 className="display-title mb-6 text-3xl sm:text-4xl font-bold text-(--sea-ink)">
-          Conversation Dashboard
+          {activeView === 'conversations' ? 'Conversation Dashboard' : 'TICS Assessment'}
         </h1>
         <p className="mb-8 max-w-2xl text-sm text-(--sea-ink-soft) sm:text-base">
           Track conversation sessions and TICS assessment trends in one place.
         </p>
 
-        <h2 className="mb-4 text-xl font-semibold text-(--sea-ink)">
-          Conversations
-        </h2>
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <label className="font-semibold text-(--sea-ink-soft) text-sm flex items-center gap-1">
-            Filter by Date:
-            <input
-              type="date"
-              value={conversationDateFilter}
-              onChange={e => setConversationDateFilter(e.target.value)}
-              className="ml-2 rounded border border-[rgba(50,143,151,0.25)] px-2 py-1 text-sm bg-transparent text-(--sea-ink) focus:outline-none focus:ring focus:border-(--lagoon-deep)"
-              style={{ minWidth: 140 }}
-            />
-          </label>
+        <div className="mb-8 inline-flex p-1 border-b border-(--line)]">
+   
           <button
-            onClick={() => { setConversationDateFilter('') }}
-            className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)] ml-2"
+            type="button"
+            onClick={() => setActiveView('conversations')}
+            className={
+              activeView === 'conversations'
+                ? 'rounded-xl bg-white px-4 py-2 text-sm font-semibold text-(--sea-ink) shadow-sm'
+                : 'rounded-xl px-4 py-2 text-sm font-semibold text-(--sea-ink-soft) transition hover:text-(--sea-ink)'
+            }
           >
-            CLEAR FILTER
+            Conversations
           </button>
-          <div className="flex-1" />
           <button
-            onClick={handleReloadConversations}
-            disabled={conversationRefreshing}
-            className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)]"
+            type="button"
+            onClick={() => setActiveView('assessments')}
+            className={
+              activeView === 'assessments'
+                ? 'rounded-xl bg-white px-4 py-2 text-sm font-semibold text-(--sea-ink) shadow-sm'
+                : 'rounded-xl px-4 py-2 text-sm font-semibold text-(--sea-ink-soft) transition hover:text-(--sea-ink)'
+            }
           >
-            {conversationRefreshing ? 'REFRESHING...' : 'RELOAD'}
+            TICS Assessments
           </button>
         </div>
-        {conversationLoading && (
-          <div className="py-10 flex justify-center items-center">
-            <span className="text-(--sea-ink-soft)">Loading...</span>
-          </div>
-        )}
-        {conversationError && (
-          <div className="py-6 text-red-600 font-semibold">
-            Error: {conversationError}
-          </div>
-        )}
-        {!conversationLoading && !conversationError && (
+
+        {activeView === 'conversations' ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-(--chip-line)">
-                <thead>
-                  <tr>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Date</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Time</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Duration (min)</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Speech Activity</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Avg Speech Rate</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Words Spoken</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {conversationFiltered.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-2 py-6 text-center text-(--sea-ink-soft)">
-                        No conversations found.
-                      </td>
-                    </tr>
-                  ) : (
-                    conversationFiltered.map((item, i) => (
-                      <tr key={i} className="even:bg-[rgba(79,184,178,0.06)]">
-                        <td className="px-2 py-2">{item.date || '-'}</td>
-                        <td className="px-2 py-2">{item.time || '-'}</td>
-                        <td className="px-2 py-2">{item.duration != null ? item.duration : '-'}</td>
-                        <td className="px-2 py-2">{item.speechActivity != null ? item.speechActivity : '-'}</td>
-                        <td className="px-2 py-2">{item.avgSpeechRate != null ? item.avgSpeechRate : '-'}</td>
-                        <td className="px-2 py-2">{item.wordsSpoken != null ? item.wordsSpoken : '-'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <label className="font-semibold text-(--sea-ink-soft) text-sm flex items-center gap-1">
+                Filter by Date:
+                <input
+                  type="date"
+                  value={conversationDateFilter}
+                  onChange={e => setConversationDateFilter(e.target.value)}
+                  className="ml-2 rounded border border-[rgba(50,143,151,0.25)] px-2 py-1 text-sm bg-transparent text-(--sea-ink) focus:outline-none focus:ring focus:border-(--lagoon-deep)"
+                  style={{ minWidth: 140 }}
+                />
+              </label>
+              <button
+                onClick={() => { setConversationDateFilter('') }}
+                className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)] ml-2"
+              >
+                CLEAR FILTER
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleReloadConversations}
+                disabled={conversationRefreshing}
+                className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)]"
+              >
+                {conversationRefreshing ? 'REFRESHING...' : 'RELOAD'}
+              </button>
             </div>
-            <ConversationCharts conversations={conversationFiltered} />
+            {conversationLoading && (
+              <div className="py-10 flex justify-center items-center">
+                <span className="text-(--sea-ink-soft)">Loading...</span>
+              </div>
+            )}
+            {conversationError && (
+              <div className="py-6 text-red-600 font-semibold">
+                Error: {conversationError}
+              </div>
+            )}
+            {!conversationLoading && !conversationError && (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-(--chip-line)">
+                    <thead>
+                      <tr>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Date</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Time</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Duration (min)</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Speech Activity</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Avg Speech Rate</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Words Spoken</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conversationFiltered.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-2 py-6 text-center text-(--sea-ink-soft)">
+                            No conversations found.
+                          </td>
+                        </tr>
+                      ) : (
+                        conversationFiltered.map((item, i) => (
+                          <tr key={i} className="even:bg-[rgba(79,184,178,0.06)]">
+                            <td className="px-2 py-2">{item.date || '-'}</td>
+                            <td className="px-2 py-2">{item.time || '-'}</td>
+                            <td className="px-2 py-2">{item.duration != null ? item.duration : '-'}</td>
+                            <td className="px-2 py-2">{item.speechActivity != null ? item.speechActivity : '-'}</td>
+                            <td className="px-2 py-2">{item.avgSpeechRate != null ? item.avgSpeechRate : '-'}</td>
+                            <td className="px-2 py-2">{item.wordsSpoken != null ? item.wordsSpoken : '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <ConversationCharts conversations={conversationFiltered} />
+              </>
+            )}
           </>
-        )}
-
-        <div className="my-10 h-px w-full bg-(--chip-line)" />
-
-        <h2 className="mb-4 text-xl font-semibold text-(--sea-ink)">
-          TICS Assessments
-        </h2>
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <label className="font-semibold text-(--sea-ink-soft) text-sm flex items-center gap-1">
-            Filter by Date:
-            <input
-              type="date"
-              value={assessmentDateFilter}
-              onChange={e => setAssessmentDateFilter(e.target.value)}
-              className="ml-2 rounded border border-[rgba(50,143,151,0.25)] px-2 py-1 text-sm bg-transparent text-(--sea-ink) focus:outline-none focus:ring focus:border-(--lagoon-deep)"
-              style={{ minWidth: 140 }}
-            />
-          </label>
-          <button
-            onClick={() => { setAssessmentDateFilter('') }}
-            className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)] ml-2"
-          >
-            CLEAR FILTER
-          </button>
-          <div className="flex-1" />
-          <button
-            onClick={handleReloadAssessments}
-            disabled={assessmentRefreshing}
-            className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)]"
-          >
-            {assessmentRefreshing ? 'REFRESHING...' : 'RELOAD'}
-          </button>
-        </div>
-        {assessmentLoading && (
-          <div className="py-10 flex justify-center items-center">
-            <span className="text-(--sea-ink-soft)">Loading...</span>
-          </div>
-        )}
-        {assessmentError && (
-          <div className="py-6 text-red-600 font-semibold">
-            Error: {assessmentError}
-          </div>
-        )}
-        {!assessmentLoading && !assessmentError && (
+        ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-(--chip-line)">
-                <thead>
-                  <tr>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Date</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Time</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Orientation</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Attention</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Immediate Recall</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Total Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assessmentFiltered.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-2 py-6 text-center text-(--sea-ink-soft)">
-                        No assessments found.
-                      </td>
-                    </tr>
-                  ) : (
-                    assessmentFiltered.map((item, i) => (
-                      <tr key={i} className="even:bg-[rgba(79,184,178,0.06)]">
-                        <td className="px-2 py-2">{item.date || '-'}</td>
-                        <td className="px-2 py-2">{item.time || '-'}</td>
-                        <td className="px-2 py-2">{item.orientation != null ? `${item.orientation}/2` : '-'}</td>
-                        <td className="px-2 py-2">{item.attention != null ? `${item.attention}/2` : '-'}</td>
-                        <td className="px-2 py-2">{item.immediateRecall != null ? `${item.immediateRecall}/1` : '-'}</td>
-                        <td className="px-2 py-2">{item.totalScore != null ? `${item.totalScore}/5` : '-'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <label className="font-semibold text-(--sea-ink-soft) text-sm flex items-center gap-1">
+                Filter by Date:
+                <input
+                  type="date"
+                  value={assessmentDateFilter}
+                  onChange={e => setAssessmentDateFilter(e.target.value)}
+                  className="ml-2 rounded border border-[rgba(50,143,151,0.25)] px-2 py-1 text-sm bg-transparent text-(--sea-ink) focus:outline-none focus:ring focus:border-(--lagoon-deep)"
+                  style={{ minWidth: 140 }}
+                />
+              </label>
+              <button
+                onClick={() => { setAssessmentDateFilter('') }}
+                className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)] ml-2"
+              >
+                CLEAR FILTER
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleReloadAssessments}
+                disabled={assessmentRefreshing}
+                className="rounded-full border border-[rgba(47,106,74,0.25)] bg-white/60 px-4 py-1.5 text-xs font-semibold text-(--sea-ink) transition hover:bg-[rgba(79,184,178,0.14)]"
+              >
+                {assessmentRefreshing ? 'REFRESHING...' : 'RELOAD'}
+              </button>
             </div>
-            <AssessmentCharts assessments={assessmentFiltered} />
+            {assessmentLoading && (
+              <div className="py-10 flex justify-center items-center">
+                <span className="text-(--sea-ink-soft)">Loading...</span>
+              </div>
+            )}
+            {assessmentError && (
+              <div className="py-6 text-red-600 font-semibold">
+                Error: {assessmentError}
+              </div>
+            )}
+            {!assessmentLoading && !assessmentError && (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-(--chip-line)">
+                    <thead>
+                      <tr>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Date</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Time</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Orientation</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Attention</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Immediate Recall</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-(--sea-ink-soft)">Total Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assessmentFiltered.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-2 py-6 text-center text-(--sea-ink-soft)">
+                            No assessments found.
+                          </td>
+                        </tr>
+                      ) : (
+                        assessmentFiltered.map((item, i) => (
+                          <tr key={i} className="even:bg-[rgba(79,184,178,0.06)]">
+                            <td className="px-2 py-2">{item.date || '-'}</td>
+                            <td className="px-2 py-2">{item.time || '-'}</td>
+                            <td className="px-2 py-2">{item.orientation != null ? `${item.orientation}/2` : '-'}</td>
+                            <td className="px-2 py-2">{item.attention != null ? `${item.attention}/2` : '-'}</td>
+                            <td className="px-2 py-2">{item.immediateRecall != null ? `${item.immediateRecall}/1` : '-'}</td>
+                            <td className="px-2 py-2">{item.totalScore != null ? `${item.totalScore}/5` : '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <AssessmentCharts assessments={assessmentFiltered} />
+              </>
+            )}
           </>
         )}
       </section>
