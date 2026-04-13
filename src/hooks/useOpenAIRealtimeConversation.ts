@@ -1,16 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { addConversationEntry } from '#/api/conversations';
+import { conversationPrompt } from '#/constants/prompts';
+import { REALTIME_URL, DEFAULT_TURN_DETECTION } from '#/constants/ai';
 
-const REALTIME_URL =
-  'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17'
-
-/** Default from original HTML when no custom silence delay: server VAD 2000ms. */
-const DEFAULT_TURN_DETECTION = {
-  type: 'server_vad' as const,
-  threshold: 0.7,
-  prefix_padding_ms: 300,
-  silence_duration_ms: 2000,
-}
 
 function metricsFromSegment(
   rawSeconds: number,
@@ -83,10 +75,7 @@ function parseEventTime(value: unknown): number | null {
 }
 
 function instructionsForLanguage(lang: ConversationLanguage): string {
-  if (lang === 'zh') {
-    return '你是一个友好、乐于助人的 AI 伙伴。请保持回答简洁、自然，适合语音交流，并在合适的情况下主动维持对话的进行。每次回复控制在 2–3 句话以内。'
-  }
-  return 'You are a friendly, helpful AI companion. Keep responses concise and conversational, suitable for voice interaction, and try to keep the conversation going. Limit responses to 2–3 sentences.'
+  return conversationPrompt[lang] || conversationPrompt['en']
 }
 
 export function useOpenAIRealtimeConversation() {

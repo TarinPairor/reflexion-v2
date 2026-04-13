@@ -53,6 +53,13 @@ export default function Header() {
             Convo
           </Link>
           <Link
+            to="/assessment"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+          >
+            Assessment
+          </Link>
+          <Link
             to="/dashboard"
             className="nav-link"
             activeProps={{ className: 'nav-link is-active' }}
